@@ -41,6 +41,9 @@ build-backend = "setuptools.build_meta"
 
 # dynamic versioning
 [tool.setuptools_scm]
+# Materialise the version as a module so that oet/__init__.py does not have
+# to query installed-package metadata at import time.
+version_file = "src/oet/_version.py"
 
 # > Wheel target
 [tool.hatch.build.targets.wheel]
@@ -118,6 +121,11 @@ files = [
     "src/",
 ]
 plugins = ['pydantic.mypy']
+
+# Generated at build time by setuptools_scm; absent in a fresh checkout.
+[[tool.mypy.overrides]]
+module = ["oet._version"]
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
