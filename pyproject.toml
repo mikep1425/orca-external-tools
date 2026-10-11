@@ -41,6 +41,9 @@ build-backend = "setuptools.build_meta"
 
 # dynamic versioning
 [tool.setuptools_scm]
+# Materialise the version as a module so that oet/__init__.py does not have
+# to query installed-package metadata at import time.
+version_file = "src/oet/_version.py"
 
 # > Wheel target
 [tool.hatch.build.targets.wheel]
@@ -55,6 +58,7 @@ oet_mlatom = "oet.calculator.mlatom:main"
 oet_mopac = "oet.calculator.mopac:main"
 oet_tblite = "oet.calculator.tblite:main"
 oet_tblite_api = "oet.calculator.tblite_api:main"
+oet_terachem = "oet.calculator.terachem:main"
 oet_uma = "oet.calculator.uma:main"
 oet_xtb = "oet.calculator.xtb:main"
 oet_client = "oet.server_client.client:client"
@@ -129,7 +133,7 @@ plugins = ['pydantic.mypy']
 
 # tblite ships no type stubs.
 [[tool.mypy.overrides]]
-module = ["tblite", "tblite.*"]
+module = ["tblite", "tblite.*","oet._version"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

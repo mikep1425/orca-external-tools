@@ -43,6 +43,7 @@ CALCULATOR_CLASSES = {
     "mopac": ("oet.calculator.mopac", "MopacCalc"),
     "tblite": ("oet.calculator.tblite", "TbliteCalc"),
     "tblite_api": ("oet.calculator.tblite_api", "TbliteApiCalc"),
+    "terachem": ("oet.calculator.terachem", "TerachemCalc"),
     "uma": ("oet.calculator.uma", "UmaCalc"),
     "xtb": ("oet.calculator.xtb", "XtbCalc"),
 }
