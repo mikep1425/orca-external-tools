@@ -16,6 +16,25 @@ ENERGY_CONVERSION = {"eV": 27.21138625, "kcal/mol": 627.509}
 # Length conversion factors (Bohr -> unit)
 LENGTH_CONVERSION = {"Ang": 0.529177210903}
 
+# Element symbols in order of atomic number; index + 1 is Z.
+PERIODIC_TABLE: tuple[str, ...] = (
+    "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
+    "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca",
+    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
+    "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr",
+    "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
+    "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
+    "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb",
+    "Lu", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
+    "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
+    "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm",
+    "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds",
+    "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og",
+)
+assert len(PERIODIC_TABLE) == 118, f"expected 118 elements, got {len(PERIODIC_TABLE)}"
+
+SYMBOL_TO_Z: dict[str, int] = {sym: i + 1 for i, sym in enumerate(PERIODIC_TABLE)}
+
 
 def search_path(file: str | Path) -> Path:
     """
@@ -614,3 +633,46 @@ def get_nns(
             )
         nns[a] = matches[0]
     return nns
+
+
+def symbol_to_z(symbol: str) -> int:
+    """
+    Convert an element symbol to its atomic number.
+
+    Parameters
+    ----------
+    symbol: str
+        Element symbol, in any capitalisation (e.g. "FE", "fe", "Fe").
+
+    Returns
+    -------
+    int: Atomic number
+
+    Raises
+    ------
+    ValueError: Unknown element symbol
+    """
+    try:
+        return SYMBOL_TO_Z[symbol.title()]
+    except KeyError:
+        raise ValueError(f"Unknown element symbol: {symbol}") from None
+
+
+def symbols_to_numbers(symbols: Sequence[str]) -> list[int]:
+    """
+    Convert a sequence of element symbols to atomic numbers.
+
+    Parameters
+    ----------
+    symbols: Sequence[str]
+        Element symbols, in any capitalisation (e.g. "FE", "fe", "Fe").
+
+    Returns
+    -------
+    list[int]: Atomic numbers in the same order
+
+    Raises
+    ------
+    ValueError: Unknown element symbol
+    """
+    return [symbol_to_z(s) for s in symbols]
