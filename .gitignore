@@ -181,7 +181,6 @@ cython_debug/
 *.bas1
 
 # compiled oet client (build artifact)
-src/oet/server_client/c_client/oet_client
 
 # setuptools_scm generated version module
 src/oet/_version.py
