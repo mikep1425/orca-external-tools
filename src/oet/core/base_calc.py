@@ -42,6 +42,7 @@ CALCULATOR_CLASSES = {
     "mlatom": ("oet.calculator.mlatom", "MlatomCalc"),
     "mopac": ("oet.calculator.mopac", "MopacCalc"),
     "tblite": ("oet.calculator.tblite", "TbliteCalc"),
+    "tblite_api": ("oet.calculator.tblite_api", "TbliteApiCalc"),
     "uma": ("oet.calculator.uma", "UmaCalc"),
     "xtb": ("oet.calculator.xtb", "XtbCalc"),
 }
@@ -52,7 +53,12 @@ class CalculationData:
     Holds the data for a given calculation. Performs file handling and input reading
     """
 
-    def __init__(self, inputfile: str, program_names: Sequence[str] | None) -> None:
+    def __init__(
+        self,
+        inputfile: str,
+        program_names: Sequence[str] | None,
+        needs_tmpdir: bool = True,
+    ) -> None:
         """
         Initialize the calculation data. Also, create tmp dir
 
@@ -62,6 +68,10 @@ class CalculationData:
             Name of the input file
         program_names: Sequence[str] | None
             List of program names that are tried to detect for settings path to program
+        needs_tmpdir: bool, default: True
+            Whether to create a scratch directory and copy the input files into it.
+            In-process calculators read the structure directly and need neither, which
+            saves an mkdir + copy + rmtree per gradient call.
         """
         # Store the original input file location
         # This should not be needed after reading
@@ -99,8 +109,14 @@ class CalculationData:
         self.basename: str = self._orig_xyzfile.name.removesuffix(".xyz")
         # Directory the calculation was called from
         self.start_dir: Path = Path.cwd()
-        # Tmp directory to run the calculation in
-        self.tmp_dir: Path = self.orca_input_dir / self.basename
+        # Whether a scratch directory is used at all
+        self.needs_tmpdir: bool = needs_tmpdir
+        # Tmp directory to run the calculation in. Without a scratch directory the
+        # calculation runs in the ORCA input directory, so that `run` can chdir to
+        # `tmp_dir` unconditionally.
+        self.tmp_dir: Path = (
+            self.orca_input_dir / self.basename if needs_tmpdir else self.orca_input_dir
+        )
         # Output file read by ORCA
         self.orca_engrad = self.orca_input_dir / (self.basename + ".engrad")
         # Temporary output file for the external program
@@ -113,23 +129,33 @@ class CalculationData:
 
         # Set up tmp dir and copy files
         # -----------------------------
-        files_to_copy = [self._orig_xyzfile]
-        if self._orig_pointcharges:
-            files_to_copy.append(self._orig_pointcharges)
-        # Make tmp directory so that every calculation is performed in its own directory
-        copied_files = copy_files_to_tmpdir(
-            files_to_copy=files_to_copy,
-            tmp_dir=self.tmp_dir,
-        )
-        # Structure file in tmp directory (should be used for calculation)
-        self.xyzfile: Path = copied_files[0]
-        # Point charge file in tmp directory (should be used for calculation)
-        self.pointcharges: Path | None = copied_files[1] if self._orig_pointcharges else None
+        if needs_tmpdir:
+            files_to_copy = [self._orig_xyzfile]
+            if self._orig_pointcharges:
+                files_to_copy.append(self._orig_pointcharges)
+            # Make tmp directory so that every calculation is performed in its own directory
+            copied_files = copy_files_to_tmpdir(
+                files_to_copy=files_to_copy,
+                tmp_dir=self.tmp_dir,
+            )
+            # Structure file in tmp directory (should be used for calculation)
+            self.xyzfile: Path = copied_files[0]
+            # Point charge file in tmp directory (should be used for calculation)
+            self.pointcharges: Path | None = (
+                copied_files[1] if self._orig_pointcharges else None
+            )
+        else:
+            # Nothing is copied, so the originals are read in place
+            self.xyzfile = self._orig_xyzfile
+            self.pointcharges = self._orig_pointcharges
 
     def remove_tmp(self) -> None:
         """
-        Removes tmp dir. Goes back to starting dir, if necessary
+        Removes tmp dir. Goes back to starting dir, if necessary.
+        A no-op when no scratch directory was created.
         """
+        if not self.needs_tmpdir:
+            return
         # Go to starting directory (if not done before)
         if Path.cwd() == self.tmp_dir:
             os.chdir(self.start_dir)
@@ -194,6 +220,11 @@ class BaseCalc(ABC):
     # Minimal Python version required;
     # Overwrite in wrapper if you require newer versions
     minimal_python_version: tuple[int, int] = (3, 10)
+
+    # Whether a scratch directory is created per calculation.
+    # Overwrite with False in wrappers that compute in-process via a library API
+    # and therefore need no scratch files.
+    needs_tmpdir: bool = True
 
     @property
     def PROGRAM_NAMES(self) -> list[str] | None:
@@ -261,7 +292,11 @@ class BaseCalc(ABC):
             os.chdir(directory)
         try:
             # Set filenames and paths according to inputfile name. Also make tmpdir
-            calc_data = CalculationData(inputfile=inputfile, program_names=self.PROGRAM_NAMES)
+            calc_data = CalculationData(
+                inputfile=inputfile,
+                program_names=self.PROGRAM_NAMES,
+                needs_tmpdir=self.needs_tmpdir,
+            )
             # Run the routine performing actual calculation
             try:
                 # Go to tmp dir where the calculation should be performed
