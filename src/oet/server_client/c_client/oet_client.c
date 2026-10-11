@@ -11,11 +11,15 @@
  * this does is forward the arguments and the working directory, relay the
  * server's stdout and propagate the exit status.
  *
+ * Named oet_client_c, not oet_client: the package already installs a console
+ * script called oet_client (the requests-based Python client) into the venv's
+ * bin, which would shadow a same-named binary on PATH.
+ *
  * Build:
- *   cc -O2 -std=c11 -o oet_client oet_client.c
+ *   cc -O2 -std=c11 -o oet_client_c oet_client.c
  *
  * Use (from an ORCA input):
- *   progext "/path/to/oet_client"
+ *   progext "/path/to/oet_client_c"
  *   ext_params "--method gfn2"
  */
 
