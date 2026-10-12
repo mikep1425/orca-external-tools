@@ -5,10 +5,12 @@
 instead of spawning the `tblite` executable per call, which is what
 `oet_tblite` does.
 
-This only pays off behind `oet_server`. Standalone, `oet_tblite_api` imports
-numpy and tblite on every invocation and is therefore **slower** than
-`oet_tblite`; it exists for testing and for checking results against the
-subprocess path.
+This only pays off behind `oet_server`. Standalone, `oet_tblite_api` imports the
+tblite bindings on every invocation -- ~205 ms, of which ~160 ms is numpy, a hard
+requirement of the bindings (they reject plain lists) rather than an oet choice --
+and is therefore much **slower** than `oet_tblite`. It exists for testing and for
+cross-checking results against the subprocess path. A server worker pays that
+import once at start-up.
 
 Install with the optional dependency group:
 
@@ -128,6 +130,23 @@ end
 %maxcore 400
 * xyzfile 0 1 coord.xyz
 ```
+
+### Binding and node layout
+
+`-b localhost:PORT` binds the loopback interface of the node the server runs on,
+which is what you want while ORCA and the external tool run on that same node
+(`#SBATCH --nodes=1`). `127.0.0.1` is equivalent and avoids an IPv6-first
+resolution attempt, but either works.
+
+If ORCA ever runs the external tool on a different node from the server, both
+forms break -- the client would be addressing its own loopback. That needs
+`-b 0.0.0.0:PORT` on the server and the server node's hostname (e.g.
+`$SLURMD_NODENAME` captured before launch) in `ext_params`.
+
+Note `make static` resolves numeric addresses only; with a hostname such as
+`localhost`, use the default dynamic build. The difference is ~0.14 ms per call.
+
+### Core budget
 
 `-n ${SLURM_NTASKS}` is the server's total core budget, enforced by
 `CoreLimiter` against the `NCores` each request asks for. GOAT splits its base

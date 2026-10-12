@@ -16,7 +16,15 @@
  * bin, which would shadow a same-named binary on PATH.
  *
  * Build:
- *   cc -O2 -std=c11 -o oet_client_c oet_client.c
+ *   cc -O2 -std=c11 -o oet_client_c oet_client.c        (make)
+ *   cc -O2 -std=c11 -static -o oet_client_c oet_client.c (make static)
+ *
+ * Of the ~2 ms a call takes, ~1.3 ms is fork+exec of the process itself, which
+ * ORCA's external-tool interface makes unavoidable. A numeric host (127.0.0.1
+ * rather than localhost) skips getaddrinfo and the NSS machinery behind it;
+ * a static build saves a further ~0.3 ms of dynamic linking, and is safe as
+ * long as only numeric hosts are used -- statically linked getaddrinfo needs
+ * the glibc NSS shared objects at runtime anyway.
  *
  * Use (from an ORCA input):
  *   progext "/path/to/oet_client_c"
@@ -33,6 +41,10 @@
 #include <unistd.h>
 #include <errno.h>
 #include <netdb.h>
+#include <stdint.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 
 #define DEFAULT_HOST "127.0.0.1"
@@ -201,33 +213,97 @@ static size_t dechunk(char *body, size_t len)
     return out;
 }
 
-static int connect_to(const char *host, const char *port)
+/*
+ * Connect to a numeric host without going through getaddrinfo, which pulls in
+ * the NSS machinery (and on a cluster can mean LDAP lookups). Returns -2 when
+ * the host is not a numeric address, so the caller can fall back.
+ */
+static int connect_numeric(const char *host, const char *port)
 {
-    struct addrinfo hints, *res, *rp;
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family   = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
+    struct sockaddr_in  a4;
+    struct sockaddr_in6 a6;
+    struct sockaddr *sa;
+    socklen_t salen;
+    int family;
 
-    int rc = getaddrinfo(host, port, &hints, &res);
-    if (rc != 0) {
-        fprintf(stderr, "oet_client: cannot resolve %s:%s: %s\n",
-                host, port, gai_strerror(rc));
+    char *end;
+    long p = strtol(port, &end, 10);
+    if (*end != '\0' || p <= 0 || p > 65535)
+        return -2;
+
+    memset(&a4, 0, sizeof a4);
+    memset(&a6, 0, sizeof a6);
+    if (inet_pton(AF_INET, host, &a4.sin_addr) == 1) {
+        a4.sin_family = AF_INET;
+        a4.sin_port   = htons((uint16_t)p);
+        sa = (struct sockaddr *)&a4;
+        salen = sizeof a4;
+        family = AF_INET;
+    } else if (inet_pton(AF_INET6, host, &a6.sin6_addr) == 1) {
+        a6.sin6_family = AF_INET6;
+        a6.sin6_port   = htons((uint16_t)p);
+        sa = (struct sockaddr *)&a6;
+        salen = sizeof a6;
+        family = AF_INET6;
+    } else {
+        return -2;
+    }
+
+    int fd = socket(family, SOCK_STREAM, 0);
+    if (fd < 0)
+        return -1;
+    if (connect(fd, sa, salen) != 0) {
+        close(fd);
         return -1;
     }
-    int fd = -1;
-    for (rp = res; rp; rp = rp->ai_next) {
-        fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-        if (fd < 0)
-            continue;
-        if (connect(fd, rp->ai_addr, rp->ai_addrlen) == 0)
-            break;
-        close(fd);
-        fd = -1;
-    }
-    freeaddrinfo(res);
-    if (fd < 0)
+    return fd;
+}
+
+static int connect_to(const char *host, const char *port)
+{
+    int fd = connect_numeric(host, port);
+    if (fd == -1) {
         fprintf(stderr, "oet_client: cannot connect to %s:%s: %s\n",
                 host, port, strerror(errno));
+        return -1;
+    }
+    if (fd == -2) {
+        /* Not a numeric address, so resolve it. */
+        struct addrinfo hints, *res, *rp;
+        memset(&hints, 0, sizeof hints);
+        hints.ai_family   = AF_UNSPEC;
+        hints.ai_socktype = SOCK_STREAM;
+        /* Skip address families the host has no address for, and skip the
+         * /etc/services lookup for what is always a numeric port. */
+        hints.ai_flags    = AI_ADDRCONFIG | AI_NUMERICSERV;
+
+        int rc = getaddrinfo(host, port, &hints, &res);
+        if (rc != 0) {
+            fprintf(stderr, "oet_client: cannot resolve %s:%s: %s\n",
+                    host, port, gai_strerror(rc));
+            return -1;
+        }
+        for (rp = res; rp; rp = rp->ai_next) {
+            fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+            if (fd < 0)
+                continue;
+            if (connect(fd, rp->ai_addr, rp->ai_addrlen) == 0)
+                break;
+            close(fd);
+            fd = -1;
+        }
+        freeaddrinfo(res);
+        if (fd < 0) {
+            fprintf(stderr, "oet_client: cannot connect to %s:%s: %s\n",
+                    host, port, strerror(errno));
+            return -1;
+        }
+    }
+
+    /* The request is one small write and the reply is wanted immediately, so
+     * do not let Nagle hold a segment waiting for more data. */
+    int one = 1;
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
     return fd;
 }
 

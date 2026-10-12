@@ -71,11 +71,8 @@ oet = "oet.scripts.oet:main"
 # $$$$$$$$$$$$$$$$$$$$$$$$$$$$
 
 [project.optional-dependencies]
-# In-process tblite calculator (oet_tblite_api). numpy arrives via tblite but is
-# pinned here too because the calculator imports it directly.
 tblite = [
     "tblite>=0.4.0",
-    "numpy>=1.24",
 ]
 
 aimnet2 = [

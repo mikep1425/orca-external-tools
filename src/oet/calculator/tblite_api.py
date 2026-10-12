@@ -15,9 +15,11 @@ Reusing the previous call's converged density as the SCF guess is available via
 moved between calls and so on the system and the search, and at larger
 displacements it saves nothing at all.
 
-Standalone use (``oet_tblite_api``) still pays the numpy + tblite import on every
-call and is therefore SLOWER than TbliteCalc; it exists for testing and for
-checking results against the subprocess path.
+Standalone use (``oet_tblite_api``) pays the full tblite import on every call --
+about 205 ms, of which ~160 ms is numpy, which the tblite bindings require and
+import themselves -- and is therefore much SLOWER than TbliteCalc. It exists for
+testing and for checking results against the subprocess path, not for production
+runs. A server worker pays that import once at start-up instead.
 
 Provides
 --------
