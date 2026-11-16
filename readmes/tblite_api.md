@@ -51,6 +51,19 @@ property of the system and of the search rather than a safe default: for small
 displacements it cuts SCC iterations noticeably, and for large ones it saves
 nothing. Measure it for your case before switching it on.
 
+## numpy and BLAS
+
+The calculator uses numpy only to marshal arrays across the C API: atomic
+numbers and positions in, gradient out, plus a scalar Angstrom-to-Bohr multiply.
+**No BLAS call goes through numpy** -- the linear algebra of the single point is
+inside `libtblite`, which is linked against whatever LAPACK you built it with
+(`-Dlapack=mkl-rt`). So a pip-installed numpy with a bundled OpenBLAS costs
+nothing here, and building numpy against MKL buys nothing.
+
+The one thing it does bring is a second OpenMP runtime (`libgomp` behind
+OpenBLAS, alongside MKL's `libiomp5`). Pin `OPENBLAS_NUM_THREADS` with the
+others so the two cannot oversubscribe each other.
+
 ## Threads
 
 tblite is parallelised with OpenMP, and `libtblite` may be linked against a
@@ -77,7 +90,7 @@ PORT=$((10000 + (SLURM_JOB_ID + ${SLURM_ARRAY_TASK_ID:-0}) % 50000))
 
 # start local server where a calculator with tblite is available.
 # The env prefix pins the calculator without touching ORCA's own OMP settings.
-OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
     oet_server tblite_api -n ${SLURM_NTASKS} -b localhost:${PORT} &
 
 # Store the servers process ID to shut it down afterwards
