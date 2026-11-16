@@ -230,8 +230,14 @@ class TbliteApiCalc(BaseCalc):
         # library is already loaded -- the pinning must be in the environment
         # BEFORE oet_server starts:
         #     OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 oet_server tblite_api ...
+        # OPENBLAS_NUM_THREADS is set too: numpy is only used here to marshal
+        # arrays to and from the C API (no BLAS call goes through it -- the
+        # linear algebra is inside libtblite), but a pip-installed numpy carries
+        # a bundled OpenBLAS with its own OpenMP runtime, and two runtimes in one
+        # process can oversubscribe.
         os.environ["OMP_NUM_THREADS"] = str(calc_data.ncores)
         os.environ["MKL_NUM_THREADS"] = str(calc_data.ncores)
+        os.environ["OPENBLAS_NUM_THREADS"] = str(calc_data.ncores)
 
         symbols, coords_ang = xyzfile_to_at_coord(calc_data.xyzfile)
         numbers = np.asarray(symbols_to_numbers(symbols))
